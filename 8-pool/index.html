@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>2D 8-POOL</title>
+    <style>
+        :root { 
+            --bg: #1a1a1a; --txt: #fff; --btn: #2d6333; 
+            --btn-hover: #3e8a46; --overlay-bg: rgba(0,0,0,0.85);
+            --panel-bg: rgba(0, 0, 0, 0.5); --accent: #f1c40f;
+        }
+        body.light { 
+            --bg: #eee; --txt: #1a1a1a; --btn: #4caf50; 
+            --btn-hover: #66bb6a; --overlay-bg: rgba(255,255,255,0.9);
+            --panel-bg: rgba(255, 255, 255, 0.7);
+        }
+        
+        body { margin: 0; background: var(--bg); color: var(--txt); font-family: sans-serif; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; transition: 0.3s; }
+        
+        #main-wrapper { display: flex; align-items: center; gap: 20px; transition: filter 0.1s; }
+        
+        .player-ui {
+            width: 160px; height: 540px; background: var(--panel-bg);
+            border: 2px solid #5d3a1a; border-radius: 12px;
+            display: flex; flex-direction: column; align-items: center; padding: 15px 10px;
+            box-sizing: border-box; backdrop-filter: blur(5px);
+        }
+
+        .player-name { font-size: 18px; font-weight: bold; color: var(--accent); text-transform: uppercase; margin-bottom: 10px; }
+        
+        .turn-indicator {
+            font-size: 12px; padding: 4px 12px; border-radius: 20px;
+            background: #444; color: #aaa; margin-bottom: 15px; opacity: 0.5;
+        }
+        .turn-indicator.active {
+            background: #e74c3c; color: #fff; opacity: 1;
+            box-shadow: 0 0 10px rgba(231, 76, 60, 0.6); animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
+        .potted-balls-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+            margin-top: auto; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; min-height: 100px;
+            width: 100%; box-sizing: border-box;
+        }
+
+        #game-container { position: relative; display: flex; flex-direction: column; align-items: center; }
+
+        #score-counter {
+            font-family: monospace; font-size: 32px; font-weight: bold; background: #111; color: #fff;
+            padding: 5px 30px; border: 4px solid #5d3a1a; border-bottom: none; border-radius: 10px 10px 0 0;
+        }
+
+        canvas { 
+            box-shadow: 0 0 60px rgba(0,0,0,0.7); display: block; cursor: crosshair; 
+        }
+        
+        .overlay { position: absolute; inset: -20px; background: var(--overlay-bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; border-radius: 20px; }
+        .hidden { display: none !important; }
+        
+        button { padding: 18px 45px; margin: 10px; font-size: 22px; cursor: pointer; background: var(--btn); color: white; border: none; border-radius: 8px; transition: 0.2s; min-width: 280px; }
+        button:hover { background: var(--btn-hover); }
+        
+        /* Измененный блок кнопок управления */
+        #controls-wrapper { position: fixed; bottom: 20px; z-index: 20; display: flex; gap: 10px; }
+        #controls-wrapper button { min-width: 220px; }
+        .btn-reset { background: #c0392b !important; }
+        .btn-reset:hover { background: #e74c3c !important; }
+
+        .item { margin: 12px; text-align: center; width: 350px; color: var(--txt); }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="range"], select { width: 100%; cursor: pointer; padding: 5px; }
+        input[type="checkbox"] { transform: scale(1.6); cursor: pointer; }
+
+        #end-screen h2 { color: var(--accent); font-size: 40px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="main-wrapper">
+        <div id="p1-ui" class="player-ui hidden">
+            <div class="player-name">Player 1</div>
+            <div id="turn-p1" class="turn-indicator active">GOES</div>
+            <div id="type-p1" style="font-size:12px; opacity:0.7">ANY</div>
+            <div id="potted-p1" class="potted-balls-grid"></div>
+        </div>
+
+        <div id="game-container">
+            <div id="score-counter" class="hidden">00:00</div>
+
+            <div id="menu-overlay" class="overlay">
+                <h1>2D 8-POOL</h1>
+                <button onclick="ui.showModeMenu(true)">START GAME</button>
+                <button onclick="ui.toggleSettings(true)">Settings</button>
+            </div>
+
+            <div id="mode-menu" class="overlay hidden">
+                <h2>Ыelect mode</h2>
+                <button onclick="startGame('pvp')">Play together</button>
+                <button onclick="startGame('pve')">Play with bot</button>
+                <button onclick="ui.showModeMenu(false)">Back</button>
+            </div>
+
+            <div id="settings" class="overlay hidden">
+                <h2>Settings</h2>
+                <div class="item">
+                    <label>Music:</label>
+                    <input type="checkbox" id="musicToggle">
+                </div>
+                <div class="item">
+                    <label>Volume:</label>
+                    <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.5">
+                </div>
+                <div class="item">
+                    <label>Theme:</label>
+                    <select id="themeSelect">
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                    </select>
+                </div>
+                <div class="item">
+                    <label>Еable brightness:</label>
+                    <input type="range" id="gamma" min="50" max="150" value="100">
+                </div>
+                <button onclick="ui.toggleSettings(false)">Back</button>
+            </div>
+
+            <div id="end-screen" class="overlay hidden">
+                <h2 id="winner-text">WIN!</h2>
+                <p id="win-reason" style="margin-bottom: 20px;"></p>
+                <button onclick="restartGame()">Play again</button>
+                <button onclick="exitToMenu()">to the menu</button>
+            </div>
+
+            <canvas id="gameCanvas"></canvas>
+        </div>
+
+        <div id="p2-ui" class="player-ui hidden">
+            <div id="p2-name-label" class="player-name">Player 2</div>
+            <div id="turn-p2" class="turn-indicator">Wait</div>
+            <div id="type-p2" style="font-size:12px; opacity:0.7">ANY</div>
+            <div id="potted-p2" class="potted-balls-grid"></div>
+        </div>
+    </div>
+
+    <div id="controls-wrapper" class="hidden">
+        <button onclick="exitToMenu()">Back to the menu</button>
+        <button class="btn-reset" onclick="resetScore()">Reset the score</button>
+    </div>
+
+    <script src="js/constants.js"></script>
+    <script src="js/ball.js"></script>
+    <script src="js/table.js"></script>
+    <script src="js/physics.js"></script>
+    <script src="js/bot.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/main.js"></script>
+
+    <script>
+        
+        window.resetScore = () => {
+            if (window.game) {
+                window.game.scoreP1 = 0;
+                window.game.scoreP2 = 0;
+                window.game.updateInterface();
+                console.log("Счет обнулен");
+            }
+        };
+
+        const bgMusic = new Audio('theme.ogg');
+        bgMusic.loop = true;
+
+        document.addEventListener('click', () => {
+            if (document.getElementById('musicToggle').checked && bgMusic.paused) {
+                bgMusic.play().catch(e => console.log("Ждем взаимодействия"));
+            }
+        }, { once: true });
+
+        document.getElementById('musicToggle').onchange = (e) => {
+            e.target.checked ? bgMusic.play() : bgMusic.pause();
+        };
+
+        document.getElementById('volumeSlider').oninput = (e) => {
+            bgMusic.volume = e.target.value;
+        };
+
+        document.getElementById('themeSelect').onchange = (e) => {
+            document.body.className = e.target.value;
+        };
+
+        document.getElementById('gamma').oninput = (e) => {
+            document.getElementById('gameCanvas').style.filter = `brightness(${e.target.value}%)`;
+        };
+
+        
+        const originalExitToMenu = window.exitToMenu;
+        window.exitToMenu = () => {
+            document.getElementById('controls-wrapper').classList.add('hidden');
+            originalExitToMenu();
+        };
+
+        const originalStartGame = window.startGame;
+        window.startGame = (mode) => {
+            document.getElementById('controls-wrapper').classList.remove('hidden');
+            originalStartGame(mode);
+        };
+    </script>
+</body>
+</html>
